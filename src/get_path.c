@@ -16,6 +16,7 @@
 static char *find_executable(char **env_tok, char **cmd)
 {
     char *exec = NULL;
+    char *exec2 = NULL;
     for (int i = 0; env_tok[i]; i++) {
         int env_tok_len = my_strlen(env_tok[i]);
         int cmd_len = my_strlen(cmd[0]);
