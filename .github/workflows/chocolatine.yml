@@ -1,0 +1,104 @@
+name: Chocolatine Workflow
+
+on:
+  push:
+    branches-ignore:
+      - "ga-ignore-*"
+  pull_request:
+    branches-ignore:
+      - "ga-ignore-*"
+
+env:
+  MIRROR_URL: "git@github.com:EpitechPromo2027/B-DOP-200-PAR-2-2-chocolatine-yanis.amedjkane.git"
+  EXECUTABLES: "mysh"
+
+jobs:
+  check_coding_style:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/epitech/coding-style-checker:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Run coding style checker
+        run: |
+          check.sh $(pwd) $(pwd)
+
+      - name: Show coding style errors
+        id: Annotations
+        run: |
+          annotations=""
+          has_errors=false
+          while read -r line; do
+            filepath=$(echo "$line" | cut -d: -f1| cut -c3-)
+            line_number=$(echo "$line" | cut -d: -f2)
+            error_code=$(echo "$line" | cut -d: -f3)
+            error_level=$(echo "$error_code" | cut -d- -f1)
+            error_message="$error_level coding style error: $filepath#L${line_number//'\n'/'%0A'}%0A$error_code"
+            echo ::error file=$filepath,line=$line_number::$error_level coding style error: $filepath#L${line_number}%0A$error_code
+            annotations="$annotations$error_message"
+            has_errors=true
+          done < coding-style-reports.log
+          if [ "$has_errors" = true ]; then
+            echo "Failing job due to coding style errors"
+          fi
+
+  check_program_compilation:
+    needs: check_coding_style
+    runs-on: ubuntu-latest
+    container:
+      image: epitechcontent/epitest-docker
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Launch make
+        run: make
+        timeout-minutes: 2
+
+      - name: Launch make clean
+        run: make clean
+
+      - name: Verify executables
+        run: |
+          for executable in ${EXECUTABLES//,/ }; do
+            if [[ ! -x "$executable" ]]; then
+              echo "$executable is not executable or does not exist"
+              exit 1
+            fi
+          done
+
+  run_tests:
+    needs: check_program_compilation
+    runs-on: ubuntu-latest
+    container:
+      image: epitechcontent/epitest-docker
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Launch tests
+        run: make tests_run
+        timeout-minutes: 2
+
+  push_to_mirror:
+    if: github.event_name == 'push'
+    needs:
+      - check_coding_style
+      - check_program_compilation
+      - run_tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Push to mirror repository
+        uses: pixta-dev/repository-mirroring-action@v1
+        with:
+          target_repo_url:
+            ${{ env.MIRROR_URL }}
+          ssh_private_key:
+            ${{ secrets. GIT_SSH_PRIVATE_KEY }}
